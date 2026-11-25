@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tarapirohe’s Floods, Dams & Climate Change</title>
+    <!-- Tailwind CSS for crisp UI overlays -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js for procedural river, dive-bomb, rain, and alert sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Google Fonts: Fredoka & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: 'Inter', sans-serif;
+        }
+        h1, h2, h3, .game-font {
+            font-family: 'Fredoka', sans-serif;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+        /* Custom juicy game buttons */
+        .btn-juicy {
+            transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
+        }
+        .btn-juicy:hover:not(:disabled) {
+            transform: translateY(-2px) scale(1.03);
+            box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35);
+        }
+        .btn-juicy:active:not(:disabled) {
+            transform: translateY(2px) scale(0.98);
+            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+        }
+        .btn-juicy:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        /* Glassmorphism HUD panels */
+        .hud-glass {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.08); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .pulse-alert {
+            animation: pulse-ring 1.2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="text-slate-100">
+
+<div id="game-container">
+    <!-- Main Interactive Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- TOP HUD BAR -->
+    <div id="top-hud" class="hidden absolute top-2 left-2 right-2 flex flex-wrap items-center justify-between gap-2 pointer-events-none z-10">
+        <!-- Left: Status Bars & Mission -->
+        <div class="hud-glass rounded-2xl p-2.5 sm:px-4 flex flex-wrap items-center gap-3 sm:gap-5 pointer-events-auto shadow-lg">
+            <!-- Energy / Hunger -->
+            <div class="flex flex-col min-w-[110px]">
+                <div class="flex justify-between text-xs font-bold text-amber-300 mb-1">
+                    <span>🐟 ENERGY</span>
+                    <span id="energy-text">100%</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
+                    <div id="energy-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-300 transition-all duration-150" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- Dive Bomb Cooldown & Level -->
+            <div class="flex flex-col min-w-[110px]">
+                <div class="flex justify-between text-xs font-bold text-sky-300 mb-1">
+                    <span>🦅 DIVE LV.<span id="dive-lvl-hud">1</span></span>
+                    <span id="dive-status">READY</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-600">
+                    <div id="dive-bar" class="h-full bg-gradient-to-r from-sky-500 to-cyan-300 transition-all duration-75" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <!-- Food Currency -->
+            <div class="flex items-center gap-1.5 bg-slate-800/90 px-3 py-1 rounded-xl border border-emerald-500/40">
+                <span class="text-base">🦟</span>
+                <span id="food-count" class="font-bold text-emerald-300 text-sm">0</span>
+            </div>
+
+            <!-- Mission Objective Pill -->
+            <div class="hidden md:flex items-center gap-2 bg-indigo-950/90 px-3 py-1.5 rounded-xl border border-indigo-400/40 text-xs font-semibold text-indigo-200">
+                <span class="px-1.5 py-0.5 bg-indigo-600 rounded text-white font-bold" id="mission-badge">MISSION 1</span>
+                <span id="mission-text">Catch 5 fish or mayflies in the braided river</span>
+            </div>
+        </div>
+
+        <!-- Right: Weather/Flood Indicator & Menu Buttons -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <div id="weather-pill" class="hud-glass rounded-xl px-3 py-2 text-xs font-bold flex items-center gap-1.5 border border-sky-400/30">
+                <span id="weather-icon">☀️</span>
+                <span id="weather-label">CLEAR FLOW</span>
+            </div>
+
+            <button id="btn-visitor" class="btn-juicy bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs sm:text-sm px-3 py-2 rounded-xl border border-teal-300/40 flex items-center gap-1.5" title="Visitor Ecology Tank">
+                <span>🔬</span><span class="hidden sm:inline">Visitor Study</span>
+            </button>
+
+            <button id="btn-upgrades" class="btn-juicy bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm px-3 py-2 rounded-xl border border-amber-300/40 flex items-center gap-1.5">
+                <span>⚡</span><span class="hidden sm:inline">Skills & Skins</span>
+            </button>
+
+            <button id="btn-fieldguide" class="btn-juicy bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs sm:text-sm px-3 py-2 rounded-xl border border-indigo-300/40 flex items-center gap-1.5">
+                <span>📖</span><span class="hidden sm:inline">Field Guide</span>
+                <span id="guide-badge" class="bg-rose-500 text-white text-[10px] px-1.5 rounded-full">1</span>
+            </button>
+
+            <button id="btn-mute" class="btn-juicy bg-slate-700 hover:bg-slate-600 text-white font-bold text-sm px-2.5 py-2 rounded-xl border border-slate-500/40" title="Toggle Sound">
+                🔊
+            </button>
+        </div>
+    </div>
+
+    <!-- MOBILE / COMPACT MISSION BAR -->
+    <div id="mobile-mission" class="hidden md:hidden absolute top-16 left-2 right-2 hud-glass rounded-xl px-3 py-1.5 text-xs font-semibold text-indigo-200 flex items-center justify-between pointer-events-none z-10">
+        <span class="px-1.5 py-0.5 bg-indigo-600 rounded text-white font-bold mr-2" id="mission-badge-m">M1</span>
+        <span id="mission-text-m" class="truncate">Catch 5 fish or mayflies</span>
+    </div>
+
+    <!-- DYNAMIC TOAST / ALERT BANNER -->
+    <div id="toast-banner" class="hidden absolute top-24 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-all duration-300">
+        <div id="toast-content" class="bg-slate-900/95 border-2 border-amber-400 text-white px-5 py-2.5 rounded-2xl shadow-2xl font-bold text-sm sm:text-base flex items-center gap-2 text-center">
+            <span id="toast-icon">⚠️</span>
+            <span id="toast-text">Alert!</span>
+        </div>
+    </div>
+
+    <!-- BOTTOM ACTION BAR (Placed neatly at bottom center outside play area clutter) -->
+    <div id="bottom-controls" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 z-10 pointer-events-auto">
+        <button id="btn-dive" class="btn-juicy bg-gradient-to-b from-sky-400 to-blue-600 text-white game-font font-bold text-sm sm:text-base px-5 py-3 rounded-2xl border-2 border-sky-200 shadow-xl flex items-center gap-2">
+            <span>🦅</span> DIVE BOMB <span class="text-xs bg-blue-900/60 px-2 py-0.5 rounded-lg hidden sm:inline">[SPACE]</span>
+        </button>
+
+        <button id="btn-nest" class="btn-juicy bg-gradient-to-b from-emerald-400 to-teal-600 text-white game-font font-bold text-sm sm:text-base px-5 py-3 rounded-2xl border-2 border-emerald-200 shadow-xl flex items-center gap-2">
+            <span>🪺</span> BUILD NEST <span class="text-xs bg-teal-900/60 px-2 py-0.5 rounded-lg hidden sm:inline">[E]</span>
+        </button>
+    </div>
+
+    <!-- START / TITLE OVERLAY -->
+    <div id="start-screen" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-30">
+        <div class="max-w-2xl w-full bg-slate-900 border-2 border-sky-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl text-center relative overflow-hidden">
+            <div class="inline-block bg-sky-500/20 border border-sky-400/40 text-sky-300 text-xs font-bold px-3 py-1 rounded-full mb-3">
+                ORIGINAL CONCEPT BY JAYDEN + DEMBRAN (24/11)
+            </div>
+            <h1 class="text-3xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-sky-300 via-teal-200 to-amber-300 mb-3 leading-tight">
+                Tarapirohe’s Floods, Dams & Climate Change
+            </h1>
+            <p class="text-slate-300 text-sm sm:text-base mb-5 max-w-xl mx-auto leading-relaxed">
+                Guide the endangered <strong>Tarāpuka</strong> (Black-billed Gull) & <strong>Tarapirohe</strong> (Black-fronted Tern) along a dynamic Aotearoa braided river. Dive-bomb for fish and mayflies, survive rain surges and dam floods, evade predators, discover hidden channels, and raise chicks!
+            </p>
+
+            <!-- Map Selection (Check A: Flood Feature & Different Maps) -->
+            <div class="mb-6">
+                <p class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Choose River Reach (Different Maps & Flood Dynamics)</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-left">
+                    <button data-map="braided" class="map-select-btn active ring-2 ring-sky-400 bg-slate-800 hover:bg-slate-750 p-3 rounded-2xl border border-slate-700 transition">
+                        <div class="font-bold text-sky-300 text-sm">🏔️ Upper Braided Flats</div>
+                        <div class="text-xs text-slate-400 mt-0.5">Balanced gravel islands & hidden side-channels.</div>
+                    </button>
+                    <button data-map="dam" class="map-select-btn bg-slate-800 hover:bg-slate-750 p-3 rounded-2xl border border-slate-700 transition">
+                        <div class="font-bold text-amber-300 text-sm">🏗️ Hydro Dam Gorge</div>
+                        <div class="text-xs text-slate-400 mt-0.5">Sudden dam-release flood waves! High gravel ridges safe.</div>
+                    </button>
+                    <button data-map="storm" class="map-select-btn bg-slate-800 hover:bg-slate-750 p-3 rounded-2xl border border-slate-700 transition">
+                        <div class="font-bold text-teal-300 text-sm">⛈️ Climate Storm Delta</div>
+                        <div class="text-xs text-slate-400 mt-0.5">Frequent rainstorms make fish & mayflies sweep fast!</div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap justify-center gap-3 text-xs text-slate-400 mb-6 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+                <span>🕹️ <strong>Move:</strong> WASD / Arrows / Touch Drag</span>
+                <span>•</span>
+                <span>🦅 <strong>Dive Bomb:</strong> Space / Button</span>
+                <span>•</span>
+                <span>🪺 <strong>Nest:</strong> E / Button</span>
+            </div>
+
+            <button id="btn-start-game" class="btn-juicy w-full sm:w-auto bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500 text-slate-950 game-font font-bold text-lg sm:text-xl px-10 py-4 rounded-2xl shadow-xl">
+                🚀 TAKE FLIGHT
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: UPGRADES, SKILLS & SKINS (Notes 4 & 6) -->
+    <div id="modal-upgrades" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+        <div class="max-w-lg w-full bg-slate-900 border-2 border-amber-400/50 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-amber-300">⚡ Abilities & Bird Skins</h2>
+                <button class="close-modal text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+            <p class="text-xs text-slate-400 mb-4">Spend caught fish & mayflies (<span id="modal-food-count" class="text-emerald-400 font-bold">0</span> 🦟) to upgrade your Tarāpuka Dive Bomb and unlock specialized plumage!</p>
+
+            <div class="space-y-3 mb-5">
+                <!-- Dive Bomb Upgrade -->
+                <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 flex items-center justify-between gap-3">
+                    <div>
+                        <div class="font-bold text-sky-300 text-sm">🦅 Tarāpuka Dive Bomb (Lv.<span id="up-dive-lvl">1</span>/4)</div>
+                        <div class="text-xs text-slate-400">Wider splash radius, faster recovery, stuns nearby predators!</div>
+                    </div>
+                    <button id="buy-dive" class="btn-juicy bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shrink-0">
+                        Upgrade (5 🦟)
+                    </button>
+                </div>
+
+                <!-- Flight Speed / Rain Resistance -->
+                <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 flex items-center justify-between gap-3">
+                    <div>
+                        <div class="font-bold text-teal-300 text-sm">💨 Gale Wing Swiftness (Lv.<span id="up-speed-lvl">1</span>/4)</div>
+                        <div class="text-xs text-slate-400">Fly faster against storm winds and rapid flood currents.</div>
+                    </div>
+                    <button id="buy-speed" class="btn-juicy bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl shrink-0">
+                        Upgrade (5 🦟)
+                    </button>
+                </div>
+            </div>
+
+            <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-2">Unlockable Hunting Skins</h3>
+            <div class="grid grid-cols-3 gap-2.5" id="skins-grid">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: FIELD GUIDE & DISCOVERIES (Note 3) -->
+    <div id="modal-guide" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+        <div class="max-w-xl w-full bg-slate-900 border-2 border-indigo-400/50 rounded-3xl p-6 shadow-2xl max-h-[88vh] flex flex-col">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-2xl font-bold text-indigo-300">📖 River Field Guide & Missions</h2>
+                <button class="close-modal text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+            <p class="text-xs text-slate-400 mb-4">Pass missions and discover hidden river features to unlock entries in your collection!</p>
+            <div id="guide-list" class="space-y-2.5 overflow-y-auto pr-1">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: VISITOR ECOLOGY OBSERVATION TANK (Top-Right Poster Note) -->
+    <div id="modal-visitor" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-30">
+        <div class="max-w-lg w-full bg-slate-900 border-2 border-teal-400/50 rounded-3xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-3">
+                <h2 class="text-2xl font-bold text-teal-300">🔬 Visitor River Study Tank</h2>
+                <button class="close-modal text-slate-400 hover:text-white text-xl font-bold px-2">✕</button>
+            </div>
+            <p class="text-xs text-slate-300 mb-4">
+                Visitors gently examine caught river insects & fish to learn what habitat they like and help them grow to full size before releasing them!
+            </p>
+
+            <div class="bg-slate-950 rounded-2xl p-4 border border-teal-500/30 mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <span id="visitor-specimen-icon" class="text-4xl">🦟</span>
+                        <div>
+                            <div id="visitor-specimen-name" class="font-bold text-teal-200 text-base">Deleatidium Mayfly Nymph</div>
+                            <div id="visitor-specimen-stage" class="text-xs text-amber-300 font-semibold">Growth Stage: Young Nymph (30%)</div>
+                        </div>
+                    </div>
+                    <button id="btn-switch-specimen" class="text-xs bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-600 text-slate-300">
+                        Switch Species ↻
+                    </button>
+                </div>
+
+                <!-- Growth Progress Bar -->
+                <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden mb-3 border border-slate-700">
+                    <div id="visitor-growth-bar" class="h-full bg-gradient-to-r from-teal-400 to-emerald-400 transition-all duration-300" style="width: 30%"></div>
+                </div>
+
+                <p id="visitor-fact" class="text-xs text-slate-300 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 mb-3">
+                    <strong>What they like:</strong> Clean, cold, oxygen-rich gravel riffles without heavy dam silt!
+                </p>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="btn-feed-algae" class="btn-juicy bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold py-2.5 px-3 rounded-xl">
+                        🌿 Provide Clean Riffle Algae
+                    </button>
+                    <button id="btn-cool-water" class="btn-juicy bg-sky-700 hover:bg-sky-600 text-white text-xs font-bold py-2.5 px-3 rounded-xl">
+                        💧 Aerate Cold Braided Water
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center text-xs text-slate-400">
+                <span>Fully Grown Specimens Released: <strong id="visitor-released" class="text-teal-300">0</strong></span>
+                <span class="text-emerald-400">+3 🦟 bonus per full growth!</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / VICTORY MODAL -->
+    <div id="modal-gameover" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-40">
+        <div class="max-w-md w-full bg-slate-900 border-2 border-rose-500/50 rounded-3xl p-6 text-center shadow-2xl">
+            <div id="gameover-icon" class="text-5xl mb-2">🌊</div>
+            <h2 id="gameover-title" class="text-3xl font-bold text-white mb-2">Swept by the Flood!</h2>
+            <p id="gameover-desc" class="text-sm text-slate-300 mb-5">
+                Climate-driven storms and dam releases make survival tough for braided-river birds. Every run reveals a brand new hidden river channel!
+            </p>
+            <div class="bg-slate-800/80 rounded-2xl p-3 mb-5 text-xs text-slate-300 flex justify-around">
+                <div><div class="text-slate-400">Food Caught</div><div id="stat-caught" class="text-lg font-bold text-emerald-400">0</div></div>
+                <div><div class="text-slate-400">Missions Passed</div><div id="stat-missions" class="text-lg font-bold text-indigo-400">0</div></div>
+                <div><div class="text-slate-400">Chicks Raised</div><div id="stat-chicks" class="text-lg font-bold text-amber-400">0</div></div>
+            </div>
+            <button id="btn-restart" class="btn-juicy w-full bg-gradient-to-r from-sky-500 to-emerald-500 text-slate-950 game-font font-bold text-lg py-3.5 rounded-2xl">
+                🔄 PLAY NEW RANDOMIZED RUN
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * TARAPIROHE'S FLOODS, DAMS & CLIMATE CHANGE
+ * Designed by Jayden + Dembran (24/11)
+ *
+ * Implements all poster & sticky note mechanics:
+ * 1. Procedural randomized hidden passage/feature per run (Note 1)
+ * 2. Rain weather making fish & mayflies sweep faster & harder to catch (Note 2)
+ * 3. Field Guide menu unlocking discoveries as missions are passed (Note 3)
+ * 4. Tarapuka upgradeable Dive Bomb ability (Note 4)
+ * 5. Visitor Study Tank where visitors observe & grow fish/insects (Top-right poster note)
+ * 6. Predators (Stoats, Cats, Harrier Hawks) attacking when too close (Note 5)
+ * 7. Hunting, survival, skills & unlockable skins (Note 6)
+ * 8. Player-chosen Nest Building on gravel islands across the map (Note 7)
+ * 9. Small fish (Galaxiids/Bullies) and Mayflies as food (Note 8)
+ * 10. Flood feature & multiple river maps (Check A / Note 9)
+ * 11. River map foraging + finding a Mate to lay eggs & hatch chicks (Note 10 & 11)
+ */
+
+// ==========================================
+// 1. PROCEDURAL SOUND ENGINE (Tone.js)
+// ==========================================
+class SoundFX {
+    constructor() {
+        this.muted = false;
+        this.initialized = false;
+    }
+
+    async init() {
+        if (this.initialized) return;
+        try {
+            await Tone.start();
+            // Synth for crisp UI & chirps
+            this.chirpSynth = new Tone.PolySynth(Tone.Synth, {
+                oscillator: { type: "sine" },
+                envelope: { attack: 0.01, decay: 0.12, sustain: 0.05, release: 0.15 }
+            }).toDestination();
+            this.chirpSynth.volume.value = -10;
+
+            // Membrane synth for Dive Bomb impact & splash
+            this.diveSynth = new Tone.MembraneSynth({
+                pitchDecay: 0.08,
+                octaves: 4,
+                envelope: { attack: 0.005, decay: 0.35, sustain: 0, release: 0.1 }
+            }).toDestination();
+            this.diveSynth.volume.value = -6;
+
+            // Noise synth for water splash & flood rumble
+            this.splashNoise = new Tone.NoiseSynth({
+                noise: { type: "pink" },
+                envelope: { attack: 0.01, decay: 0.25, sustain: 0, release: 0.1 }
+            }).toDestination();
+            this.splashNoise.volume.value = -12;
+
+            // Alert synth for predators & dam sirens
+            this.alertSynth = new Tone.AMSynth({
+                envelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.2 }
+            }).toDestination();
+            this.alertSynth.volume.value = -9;
+
+            this.initialized = true;
+        } catch (e) {
+            console.warn("Audio init deferred:", e);
+        }
+    }
+
+    playDive() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.diveSynth.triggerAttackRelease("C2", "8n", now);
+        this.splashNoise.triggerAttackRelease("16n", now + 0.06);
+    }
+
+    playCatch(isRare = false) {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        if (isRare) {
+            this.chirpSynth.triggerAttackRelease(["E5", "G#5", "B5"], "16n", now);
+        } else {
+            this.chirpSynth.triggerAttackRelease(["C5", "G5"], "32n", now);
+        }
+    }
+
+    playChirpMate() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.chirpSynth.triggerAttackRelease("A5", "16n", now);
+        this.chirpSynth.triggerAttackRelease("D6", "16n", now + 0.1);
+        this.chirpSynth.triggerAttackRelease("E6", "8n", now + 0.22);
+    }
+
+    playBuildNest() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.chirpSynth.triggerAttackRelease(["D4", "F#4", "A4"], "8n", now);
+    }
+
+    playPredatorWarn() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.alertSynth.triggerAttackRelease("F3", "16n", now);
+        this.alertSynth.triggerAttackRelease("E3", "16n", now + 0.14);
+    }
+
+    playFloodWarning() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.alertSynth.triggerAttackRelease("A2", "4n", now);
+        this.splashNoise.triggerAttackRelease("2n", now);
+    }
+
+    playMissionComplete() {
+        if (this.muted || !this.initialized) return;
+        const now = Tone.now();
+        this.chirpSynth.triggerAttackRelease("C5", "16n", now);
+        this.chirpSynth.triggerAttackRelease("E5", "16n", now + 0.1);
+        this.chirpSynth.triggerAttackRelease("G5", "16n", now + 0.2);
+        this.chirpSynth.triggerAttackRelease("C6", "4n", now + 0.3);
+    }
+
+    toggleMute() {
+        this.muted = !this.muted;
+        return this.muted;
+    }
+}
+
+const sfx = new SoundFX();
+
+// ==========================================
+// 2. GAME DATA, MISSIONS, FIELD GUIDE & SKINS
+// ==========================================
+const FIELD_GUIDE_ENTRIES = [
+    {
+        id: "tarapuka",
+        title: "Tarāpuka & Tarapirohe",
+        subtitle: "Braided River Specialists",
+        unlocked: true,
+        icon: "🦅",
+        desc: "Tarāpuka (Black-billed Gull) and Tarapirohe (Black-fronted Tern) nest on open shingle islands in Aotearoa's braided rivers. Their Dive Bomb catches small fish and drifting insects."
+    },
+    {
+        id: "mayfly",
+        title: "Mayflies & Galaxiid Fish",
+        subtitle: "River Food Web",
+        unlocked: false,
+        icon: "🦟",
+        desc: "Unlocked in Mission 1! Mayflies (Deleatidium) and native small fish thrive in clean, stony braided channels. Rainstorms sweep them faster downstream."
+    },
+    {
+        id: "hidden_channel",
+        title: "Secret Spring-Fed Lagoon",
+        subtitle: "Randomized Hidden Passage",
+        unlocked: false,
+        icon: "🌿",
+        desc: "Unlocked by discovering the Hidden Passage! Every braided river shifts after floods, carving secret calm backwaters rich in golden mayflies."
+    },
+    {
+        id: "nest_colony",
+        title: "Shingle Island Nesting",
+        subtitle: "Breeding & Chicks",
+        unlocked: false,
+        icon: "🪺",
+        desc: "Unlocked by building a nest & finding a mate! Braided river birds lay camouflaged eggs on high gravel bars—but low nests risk being washed away by dam releases."
+    },
+    {
+        id: "climate_dams",
+        title: "Floods, Dams & Climate Change",
+        subtitle: "Environmental Pressures",
+        unlocked: false,
+        icon: "🌊",
+        desc: "Unlocked by surviving a Flood Surge! Hydro dams alter natural river flows, while climate change brings heavier storms that flood nests and muddy the water."
+    },
+    {
+        id: "predators",
+        title: "Introduced Predators",
+        subtitle: "Stoats, Feral Cats & Hawks",
+        unlocked: false,
+        icon: "🦊",
+        desc: "Unlocked by escaping or stunning a Predator! Stoats and cats swim across shallow braids to raid nests when water levels drop."
+    }
+];
+
+const SKINS = [
+    {
+        id: "tarapuka_classic",
+        name: "Tarāpuka Gull",
+        cost: 0,
+        unlocked: true,
+        bodyColor: "#f8fafc",
+        wingColor: "#94a3b8",
+        headColor: "#f8fafc",
+        beakColor: "#1e293b",
+        perk: "Balanced Flight & Dive"
+    },
+    {
+        id: "tarapirohe_tern",
+        name: "Tarapirohe Tern",
+        cost: 8,
+        unlocked: false,
+        bodyColor: "#cbd5e1",
+        wingColor: "#64748b",
+        headColor: "#0f172a",
+        beakColor: "#f97316",
+        perk: "+15% Dive Catch Radius"
+    },
+    {
+        id: "storm_hunter",
+        name: "Aotearoa Storm Crest",
+        cost: 15,
+        unlocked: false,
+        bodyColor: "#e0f2fe",
+        wingColor: "#0284c7",
+        headColor: "#0369a1",
+        beakColor: "#facc15",
+        perk: "Resists Rain Wind Drag"
+    }
+];
+
+const MISSIONS = [
+    { id: 1, text: "Catch 5 small fish or mayflies in the river", target: 5, unlockGuide: "mayfly" },
+    { id: 2, text: "Find the Hidden Passage on the river bank!", target: 1, unlockGuide: "hidden_channel" },
+    { id: 3, text: "Build a Nest [E] on high gravel & find a Mate", target: 1, unlockGuide: "nest_colony" },
+    { id: 4, text: "Survive a Climate Rain / Dam Flood Surge!", target: 1, unlockGuide: "climate_dams" },
+    { id: 5, text: "Feed your Mate/Chicks at the Nest (3 food)", target: 3, unlockGuide: "predators" }
+];
+
+const VISITOR_SPECIMENS = [
+    {
+        name: "Deleatidium Mayfly Nymph",
+        icon: "🦟",
+        stage: 30,
+        fact: "What they like: Cold, fast-flowing water over clean river cobbles. Heavy silt from dam changes clogs their gills!",
+        stagesText: ["Tiny Larva", "Young Nymph", "Sub-imago Dun", "Fully Grown Adult Mayfly!"]
+    },
+    {
+        name: "Juvenile Inanga (Native Fish)",
+        icon: "🐟",
+        stage: 25,
+        fact: "What they like: Sheltered braided side-channels with overhanging bank grasses to lay eggs safely.",
+        stagesText: ["Whitebait Fry", "Growing Juvenile", "Silver-bellied Adult", "Fully Grown Native Fish!"]
+    }
+];
+
+// ==========================================
+// 3. MAIN GAME ENGINE & STATE
+// ==========================================
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+
+function resizeCanvas() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+// World Coordinates (Larger scrollable braided river map)
+const WORLD = {
+    width: 2400,
+    height: 1600
+};
+
+let gameState = {
+    running: false,
+    paused: false,
+    mapType: "braided", // 'braided', 'dam', 'storm'
+    food: 0,
+    totalCaught: 0,
+    energy: 100,
+    diveLevel: 1,
+    speedLevel: 1,
+    currentSkin: "tarapuka_classic",
+    missionIdx: 0,
+    missionProgress: 0,
+    missionsCompleted: 0,
+    chicksRaised: 0,
+    visitorReleased: 0,
+    currentSpecimenIdx: 0,
+
+    // Environmental state
+    isRaining: false,
+    rainTimer: 18,
+    isFlooding: false,
+    floodLevel: 0, // 0 to 1
+    floodTimer: 32,
+    screenShake: 0,
+
+    // Entities
+    player: null,
+    islands: [],
+    hiddenPassage: null,
+    foods: [],
+    predators: [],
+    nest: null,
+    mate: null,
+    particles: [],
+    ripples: [],
+    rainDrops: []
+};
+
+// Input tracking
+const keys = {};
+let pointerTarget = null;
+
+window.addEventListener("keydown", (e) => {
+    keys[e.code] = true;
+    if (!gameState.running || gameState.paused) return;
+    if (e.code === "Space") {
+        e.preventDefault();
+        triggerDiveBomb();
+    } else if (e.code === "KeyE") {
+        e.preventDefault();
+        tryBuildOrInteractNest();
+    }
+});
+window.addEventListener("keyup", (e) => {
+    keys[e.code] = false;
+});
+
+// Touch & Mouse canvas steering
+canvas.addEventListener("pointerdown", (e) => {
+    if (!gameState.running || gameState.paused) return;
+    sfx.init();
+    pointerTarget = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener("pointermove", (e) => {
+    if (pointerTarget && e.buttons > 0) {
+        pointerTarget = { x: e.clientX, y: e.clientY };
+    }
+});
+canvas.addEventListener("pointerup", () => {
+    pointerTarget = null;
+});
+
+// ==========================================
+// 4. WORLD GENERATION (RANDOMIZED PER RUN)
+// ==========================================
+function initRun() {
+    // Reset stats
+    gameState.food = 0;
+    gameState.totalCaught = 0;
+    gameState.energy = 100;
+    gameState.diveLevel = 1;
+    gameState.speedLevel = 1;
+    gameState.missionIdx = 0;
+    gameState.missionProgress = 0;
+    gameState.missionsCompleted = 0;
+    gameState.chicksRaised = 0;
+    gameState.isRaining = gameState.mapType === "storm";
+    gameState.rainTimer = gameState.mapType === "storm" ? 15 : 22;
+    gameState.isFlooding = false;
+    gameState.floodLevel = 0;
+    gameState.floodTimer = gameState.mapType === "dam" ? 20 : 35;
+    gameState.nest = null;
+    gameState.particles = [];
+    gameState.ripples = [];
+
+    // Player starts near central gravel bar
+    gameState.player = {
+        x: WORLD.width * 0.5,
+        y: WORLD.height * 0.5,
+        vx: 0,
+        vy: 0,
+        angle: 0,
+        wingPhase: 0,
+        diving: false,
+        diveTimer: 0,
+        diveCooldown: 0,
+        invulnTimer: 0
+    };
+
+    // Generate randomized Shingle Gravel Islands (some low-lying, some high ridges)
+    gameState.islands = [];
+    const islandCount = 11;
+    for (let i = 0; i < islandCount; i++) {
+        const isHighRidge = i % 3 === 0; // High islands survive dam floods!
+        gameState.islands.push({
+            x: 320 + Math.random() * (WORLD.width - 640),
+            y: 220 + Math.random() * (WORLD.height - 440),
+            rx: 85 + Math.random() * 75,
+            ry: 55 + Math.random() * 45,
+            rotation: (Math.random() - 0.5) * 0.8,
+            elevation: isHighRidge ? "high" : "low"
+        });
+    }
+
+    // Note 1: Randomized Hidden Passage / Secret Lagoon different on every run!
+    const side = Math.random() < 0.5 ? "left" : "right";
+    const passageY = 300 + Math.random() * (WORLD.height - 600);
+    gameState.hiddenPassage = {
+        x: side === "left" ? 130 : WORLD.width - 130,
+        y: passageY,
+        radius: 130,
+        discovered: false,
+        side: side
+    };
+
+    // Spawn Mate somewhere along the river
+    gameState.mate = {
+        x: 400 + Math.random() * (WORLD.width - 800),
+        y: 300 + Math.random() * (WORLD.height - 600),
+        following: false,
+        atNest: false,
+        wingPhase: 0
+    };
+
+    // Spawn initial Fish & Mayflies (Note 8)
+    gameState.foods = [];
+    for (let i = 0; i < 32; i++) {
+        spawnFood(false);
+    }
+    // Spawn bonus golden mayflies inside the Hidden Passage
+    for (let i = 0; i < 6; i++) {
+        gameState.foods.push({
+            x: gameState.hiddenPassage.x + (Math.random() - 0.5) * 120,
+            y: gameState.hiddenPassage.y + (Math.random() - 0.5) * 120,
+            type: "golden_mayfly",
+            vx: 0,
+            vy: 0.3,
+            phase: Math.random() * Math.PI * 2,
+            value: 3
+        });
+    }
+
+    // Spawn Predators (Note 5: Stoats, Feral Cats, Swamp Harriers)
+    gameState.predators = [];
+    const predTypes = [
+        { type: "stoat", name: "Stoat", color: "#92400e", speed: 135, radius: 165 },
+        { type: "cat", name: "Feral Cat", color: "#334155", speed: 120, radius: 180 },
+        { type: "hawk", name: "Harrier Hawk", color: "#78350f", speed: 155, radius: 200 }
+    ];
+    for (let i = 0; i < 6; i++) {
+        const pt = predTypes[i % predTypes.length];
+        gameState.predators.push({
+            x: 250 + Math.random() * (WORLD.width - 500),
+            y: 250 + Math.random() * (WORLD.height - 500),
+            vx: (Math.random() - 0.5) * 60,
+            vy: (Math.random() - 0.5) * 60,
+            ...pt,
+            stunTimer: 0,
+            chasing: false
+        });
+    }
+
+    // Rain particles
+    gameState.rainDrops = [];
+    for (let i = 0; i < 120; i++) {
+        gameState.rainDrops.push({
+            x: Math.random() * width,
+            y: Math.random() * height,
+            len: 12 + Math.random() * 14,
+            speed: 550 + Math.random() * 250
+        });
+    }
+
+    updateHUD();
+    showToast("🔍 Explore the river! Find hidden channels, hunt fish & build a high nest.", "🦅");
+}
+
+function spawnFood(atTop = true) {
+    const isFish = Math.random() < 0.55;
+    gameState.foods.push({
+        x: 180 + Math.random() * (WORLD.width - 360),
+        y: atTop ? -20 : Math.random() * WORLD.height,
+        type: isFish ? "fish" : "mayfly",
+        vx: (Math.random() - 0.5) * 25,
+        vy: isFish ? 75 + Math.random() * 45 : 55 + Math.random() * 35,
+        phase: Math.random() * Math.PI * 2,
+        value: 1
+    });
+}
+
+// ==========================================
+// 5. CORE GAMEPLAY ACTIONS
+// ==========================================
+function triggerDiveBomb() {
+    const p = gameState.player;
+    if (p.diving || p.diveCooldown > 0) return;
+
+    p.diving = true;
+    p.diveTimer = 0.38;
+    const maxCd = Math.max(0.8, 2.2 - (gameState.diveLevel - 1) * 0.35);
+    p.diveCooldown = maxCd;
+
+    sfx.playDive();
+    gameState.screenShake = 6 + gameState.diveLevel * 2;
+
+    // Create expanding water splash ripples
+    const catchRadius = (58 + (gameState.diveLevel - 1) * 18) * (gameState.currentSkin === "tarapirohe_tern" ? 1.15 : 1);
+    gameState.ripples.push({
+        x: p.x,
+        y: p.y,
+        r: 10,
+        maxR: catchRadius,
+        alpha: 0.9
+    });
+
+    // Catch fish & mayflies inside dive radius
+    let caughtNow = 0;
+    for (let i = gameState.foods.length - 1; i >= 0; i--) {
+        const f = gameState.foods[i];
+        const dist = Math.hypot(f.x - p.x, f.y - p.y);
+        if (dist <= catchRadius) {
+            gameState.food += f.value;
+            gameState.totalCaught += 1;
+            gameState.energy = Math.min(100, gameState.energy + (f.value * 14));
+            caughtNow += f.value;
+
+            spawnBurst(f.x, f.y, f.type === "golden_mayfly" ? "#facc15" : "#38bdf8", 10);
+            gameState.foods.splice(i, 1);
+            spawnFood(true);
+
+            // Mission 1 progress
+            if (gameState.missionIdx === 0) {
+                advanceMission(1);
+            }
+        }
+    }
+
+    if (caughtNow > 0) {
+        sfx.playCatch(caughtNow >= 3);
+    }
+
+    // Stun nearby predators if Dive Bomb Lv.2+ (Note 4 upgrade perk)
+    if (gameState.diveLevel >= 2) {
+        gameState.predators.forEach(pred => {
+            if (Math.hypot(pred.x - p.x, pred.y - p.y) <= catchRadius + 30) {
+                pred.stunTimer = 3.5;
+                pred.chasing = false;
+                spawnBurst(pred.x, pred.y, "#f97316", 12);
+                showToast(`💥 Dive Bomb stunned the ${pred.name}!`, "🦅");
+                if (gameState.missionIdx === 4) {
+                    unlockFieldGuide("predators");
+                }
+            }
+        });
+    }
+
+    updateHUD();
+}
+
+function tryBuildOrInteractNest() {
+    const p = gameState.player;
+
+    // If nest already exists and player is near it -> feed mate/chicks!
+    if (gameState.nest) {
+        const distToNest = Math.hypot(p.x - gameState.nest.x, p.y - gameState.nest.y);
+        if (distToNest < 85) {
+            if (gameState.food > 0 && gameState.mate && gameState.mate.atNest) {
+                gameState.food -= 1;
+                gameState.nest.fedCount += 1;
+                sfx.playChirpMate();
+                spawnBurst(gameState.nest.x, gameState.nest.y, "#4ade80", 14);
+
+                if (gameState.nest.eggs < 2) {
+                    gameState.nest.eggs += 1;
+                    showToast("🥚 Your mate laid a speckled river egg!", "🪺");
+                } else if (gameState.nest.chicks < 2) {
+                    gameState.nest.chicks += 1;
+                    gameState.chicksRaised += 1;
+                    showToast("🐣 A fuzzy chick hatched in your nest!", "🎉");
+                } else {
+                    showToast("❤️ Chicks fed and thriving!", "🐣");
+                }
+
+                if (gameState.missionIdx === 4) {
+                    advanceMission(1);
+                }
+                updateHUD();
+                return;
+            } else if (!gameState.mate.atNest) {
+                showToast("🐦 Fly around the river to find a Mate and lead them to your nest!", "💡");
+                return;
+            } else {
+                showToast("🐟 Catch fish or mayflies first to feed your nest!", "🦟");
+                return;
+            }
+        }
+    }
+
+    // Check if player is over a gravel island to build/relocate nest (Note 7)
+    let onIsland = null;
+    for (const isl of gameState.islands) {
+        const dx = (p.x - isl.x) / isl.rx;
+        const dy = (p.y - isl.y) / isl.ry;
+        if (dx * dx + dy * dy <= 1.05) {
+            onIsland = isl;
+            break;
+        }
+    }
+
+    if (!onIsland) {
+        showToast("🏝️ Fly over a shingle gravel island to build your nest!", "🪺");
+        return;
+    }
+
+    gameState.nest = {
+        x: p.x,
+        y: p.y,
+        elevation: onIsland.elevation,
+        eggs: 0,
+        chicks: 0,
+        fedCount: 0
+    };
+    sfx.playBuildNest();
+    spawnBurst(p.x, p.y, "#fbbf24", 16);
+
+    if (onIsland.elevation === "high") {
+        showToast("🪺 Built a HIGH-RIDGE nest! Safe from dam floods!", "⛰️");
+    } else {
+        showToast("⚠️ Built a LOW-GRAVEL nest! Watch out for dam flood surges!", "🌊");
+    }
+
+    if (gameState.mate && gameState.mate.following) {
+        gameState.mate.atNest = true;
+        gameState.mate.following = false;
+        if (gameState.missionIdx === 2) advanceMission(1);
+    } else if (gameState.missionIdx === 2 && gameState.mate && gameState.mate.atNest) {
+        advanceMission(1);
+    }
+    updateHUD();
+}
+
+function advanceMission(amount) {
+    if (gameState.missionIdx >= MISSIONS.length) return;
+    const m = MISSIONS[gameState.missionIdx];
+    gameState.missionProgress += amount;
+
+    if (gameState.missionProgress >= m.target) {
+        gameState.missionsCompleted += 1;
+        unlockFieldGuide(m.unlockGuide);
+        sfx.playMissionComplete();
+        showToast(`🏆 Mission ${m.id} Passed! New Field Guide Entry Unlocked!`, "📖");
+
+        gameState.missionIdx += 1;
+        gameState.missionProgress = 0;
+
+        if (gameState.missionIdx >= MISSIONS.length) {
+            showToast("🌟 ALL MISSIONS COMPLETE! Keep surviving & raising chicks!", "👑");
+        }
+    }
+    updateHUD();
+}
+
+function unlockFieldGuide(id) {
+    const entry = FIELD_GUIDE_ENTRIES.find(e => e.id === id);
+    if (entry && !entry.unlocked) {
+        entry.unlocked = true;
+        const unlockedCount = FIELD_GUIDE_ENTRIES.filter(e => e.unlocked).length;
+        document.getElementById("guide-badge").textContent = unlockedCount;
+    }
+}
+
+function spawnBurst(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 110;
+        gameState.particles.push({
+            x, y,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            life: 0.45 + Math.random() * 0.25,
+            maxLife: 0.7,
+            color,
+            size: 3 + Math.random() * 3
+        });
+    }
+}
+
+let toastTimeout = null;
+function showToast(text, icon = "ℹ️") {
+    const banner = document.getElementById("toast-banner");
+    document.getElementById("toast-text").textContent = text;
+    document.getElementById("toast-icon").textContent = icon;
+    banner.classList.remove("hidden");
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        banner.classList.add("hidden");
+    }, 3400);
+}
+
+// ==========================================
+// 6. SIMULATION UPDATE LOOP
+// ==========================================
+function update(dt) {
+    if (!gameState.running || gameState.paused) return;
+
+    const p = gameState.player;
+
+    // 1. Weather & Dam Flood Cycle (Notes 2 & 9)
+    gameState.rainTimer -= dt;
+    if (gameState.rainTimer <= 0) {
+        gameState.isRaining = !gameState.isRaining;
+        gameState.rainTimer = gameState.isRaining
+            ? (gameState.mapType === "storm" ? 20 : 14)
+            : (gameState.mapType === "storm" ? 12 : 22);
+
+        if (gameState.isRaining) {
+            showToast("🌧️ RAINSTORM! Fish & mayflies float much faster downstream!", "⛈️");
+        } else {
+            showToast("☀️ Rain cleared! River flow stabilizing.", "🌤️");
+        }
+        updateHUD();
+    }
+
+    gameState.floodTimer -= dt;
+    if (gameState.floodTimer <= 0 && !gameState.isFlooding) {
+        gameState.isFlooding = true;
+        gameState.floodTimer = 14; // Flood lasts 14 seconds
+        sfx.playFloodWarning();
+        const reason = gameState.mapType === "dam" ? "HYDRO DAM SPILLWAY OPENED!" : "CLIMATE FLOOD SURGE!";
+        showToast(`🚨 ${reason} Low gravel bars submerging!`, "🌊");
+        updateHUD();
+    } else if (gameState.isFlooding) {
+        gameState.floodLevel = Math.min(1, gameState.floodLevel + dt * 0.35);
+        gameState.floodTimer -= dt;
+        if (gameState.floodTimer <= 0) {
+            gameState.isFlooding = false;
+            gameState.floodTimer = gameState.mapType === "dam" ? 24 : 36;
+            if (gameState.missionIdx === 3) {
+                advanceMission(1);
+            }
+            showToast("🌊 Flood waters receding back into braided channels.", "✅");
+            updateHUD();
+        }
+    } else {
+        gameState.floodLevel = Math.max(0, gameState.floodLevel - dt * 0.25);
+    }
+
+    // Check if low-lying nest gets washed out during high flood!
+    if (gameState.nest && gameState.floodLevel > 0.75 && gameState.nest.elevation === "low") {
+        spawnBurst(gameState.nest.x, gameState.nest.y, "#38bdf8", 22);
+        gameState.nest = null;
+        if (gameState.mate) {
+            gameState.mate.atNest = false;
+            gameState.mate.following = true;
+        }
+        sfx.playPredatorWarn();
+        showToast("💔 Flood washed away your low nest! Rebuild on a HIGH gravel ridge!", "🌊");
+    }
+
+    // 2. Player Movement
+    let ix = 0, iy = 0;
+    if (keys["KeyW"] || keys["ArrowUp"]) iy -= 1;
+    if (keys["KeyS"] || keys["ArrowDown"]) iy += 1;
+    if (keys["KeyA"] || keys["ArrowLeft"]) ix -= 1;
+    if (keys["KeyD"] || keys["ArrowRight"]) ix += 1;
+
+    // Touch / pointer steering relative to screen center
+    if (pointerTarget) {
+        const dx = pointerTarget.x - width * 0.5;
+        const dy = pointerTarget.y - height * 0.5;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 15) {
+            ix = dx / dist;
+            iy = dy / dist;
+        }
+    }
+
+    const mag = Math.hypot(ix, iy);
+    if (mag > 0) {
+        ix /= mag;
+        iy /= mag;
+    }
+
+    const baseSpeed = 270 + (gameState.speedLevel - 1) * 42;
+    const rainDrag = (gameState.isRaining && gameState.currentSkin !== "storm_hunter") ? 0.85 : 1.0;
+    const targetVx = ix * baseSpeed * rainDrag;
+    const targetVy = iy * baseSpeed * rainDrag;
+
+    p.vx += (targetVx - p.vx) * Math.min(1, dt * 10);
+    p.vy += (targetVy - p.vy) * Math.min(1, dt * 10);
+
+    // Gentle downstream wind/current drift during storms
+    if (gameState.isRaining) {
+        p.vy += 28 * dt;
+    }
+
+    p.x = Math.max(60, Math.min(WORLD.width - 60, p.x + p.vx * dt));
+    p.y = Math.max(60, Math.min(WORLD.height - 60, p.y + p.vy * dt));
+
+    if (Math.hypot(p.vx, p.vy) > 15) {
+        p.angle = Math.atan2(p.vy, p.vx);
+    }
+    p.wingPhase += dt * (p.diving ? 2 : 11);
+
+    if (p.diving) {
+        p.diveTimer -= dt;
+        if (p.diveTimer <= 0) p.diving = false;
+    }
+    if (p.diveCooldown > 0) {
+        p.diveCooldown = Math.max(0, p.diveCooldown - dt);
+    }
+    if (p.invulnTimer > 0) {
+        p.invulnTimer -= dt;
+    }
+
+    // Energy drain over time
+    gameState.energy -= dt * (gameState.isRaining ? 2.4 : 1.7);
+    if (gameState.energy <= 0) {
+        triggerGameOver("Exhausted on the River!", "Your Tarāpuka ran out of energy. Dive-bomb fish and mayflies regularly to keep your strength up!");
+        return;
+    }
+
+    // 3. Check Hidden Passage Discovery (Note 1)
+    const hp = gameState.hiddenPassage;
+    if (hp && !hp.discovered) {
+        if (Math.hypot(p.x - hp.x, p.y - hp.y) < hp.radius) {
+            hp.discovered = true;
+            sfx.playMissionComplete();
+            spawnBurst(hp.x, hp.y, "#facc15", 25);
+            unlockFieldGuide("hidden_channel");
+            showToast("✨ SECRET SPRING LAGOON FOUND! Bonus Golden Mayflies inside!", "🌿");
+            if (gameState.missionIdx === 1) {
+                advanceMission(1);
+            }
+        }
+    }
+
+    // 4. Mate AI (Note 10)
+    const mate = gameState.mate;
+    if (mate) {
+        mate.wingPhase += dt * 10;
+        if (!mate.following && !mate.atNest) {
+            if (Math.hypot(p.x - mate.x, p.y - mate.y) < 95) {
+                mate.following = true;
+                sfx.playChirpMate();
+                showToast("💕 You found a Mate! Build a Nest [E] on a gravel island!", "🐦");
+            }
+        } else if (mate.following) {
+            const targetX = gameState.nest ? gameState.nest.x + 18 : p.x - Math.cos(p.angle) * 45;
+            const targetY = gameState.nest ? gameState.nest.y + 8 : p.y - Math.sin(p.angle) * 45;
+            mate.x += (targetX - mate.x) * dt * 3.2;
+            mate.y += (targetY - mate.y) * dt * 3.2;
+
+            if (gameState.nest && Math.hypot(mate.x - gameState.nest.x, mate.y - gameState.nest.y) < 35) {
+                mate.following = false;
+                mate.atNest = true;
+                if (gameState.missionIdx === 2) advanceMission(1);
+            }
+        } else if (mate.atNest && gameState.nest) {
+            mate.x = gameState.nest.x + 16;
+            mate.y = gameState.nest.y + 6;
+        }
+    }
+
+    // 5. Update Fish & Mayflies (Note 2: Float much faster when raining!)
+    const flowMultiplier = (gameState.isRaining ? 2.35 : 1.0) + (gameState.floodLevel * 0.9);
+    for (let i = gameState.foods.length - 1; i >= 0; i--) {
+        const f = gameState.foods[i];
+        f.phase += dt * 5;
+        if (f.type !== "golden_mayfly") {
+            f.x += (f.vx + Math.sin(f.phase) * 28) * dt;
+            f.y += f.vy * flowMultiplier * dt;
+        } else {
+            // Golden mayflies hover in the hidden lagoon
+            f.x += Math.cos(f.phase) * 18 * dt;
+            f.y += Math.sin(f.phase) * 18 * dt;
+        }
+
+        if (f.y > WORLD.height + 40) {
+            gameState.foods.splice(i, 1);
+            spawnFood(true);
+        }
+    }
+
+    // 6. Update Predators (Note 5: Attack when player goes too close!)
+    for (const pred of gameState.predators) {
+        if (pred.stunTimer > 0) {
+            pred.stunTimer -= dt;
+            continue;
+        }
+
+        const distToPlayer = Math.hypot(p.x - pred.x, p.y - pred.y);
+        if (distToPlayer < pred.radius && !p.diving) {
+            if (!pred.chasing) {
+                pred.chasing = true;
+                sfx.playPredatorWarn();
+            }
+            const ang = Math.atan2(p.y - pred.y, p.x - pred.x);
+            pred.x += Math.cos(ang) * pred.speed * dt;
+            pred.y += Math.sin(ang) * pred.speed * dt;
+
+            // Predator strikes if it catches up!
+            if (distToPlayer < 28 && p.invulnTimer <= 0) {
+                p.invulnTimer = 1.6;
+                gameState.energy -= 26;
+                gameState.screenShake = 12;
+                sfx.playPredatorWarn();
+                spawnBurst(p.x, p.y, "#ef4444", 16);
+                showToast(`⚠️ Attacked by a ${pred.name}! Fly away or Dive-Bomb (Lv.2+)!`, "🦊");
+
+                // Knockback
+                p.vx = Math.cos(ang) * 340;
+                p.vy = Math.sin(ang) * 340;
+            }
+        } else {
+            pred.chasing = false;
+            pred.x += pred.vx * dt;
+            pred.y += pred.vy * dt;
+            if (pred.x < 180 || pred.x > WORLD.width - 180) pred.vx *= -1;
+            if (pred.y < 180 || pred.y > WORLD.height - 180) pred.vy *= -1;
+        }
+    }
+
+    // 7. Visual Ripples & Particles
+    for (let i = gameState.ripples.length - 1; i >= 0; i--) {
+        const r = gameState.ripples[i];
+        r.r += (r.maxR - r.r) * dt * 8;
+        r.alpha -= dt * 1.8;
+        if (r.alpha <= 0) gameState.ripples.splice(i, 1);
+    }
+
+    for (let i = gameState.particles.length - 1; i >= 0; i--) {
+        const pt = gameState.particles[i];
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.life -= dt;
+        if (pt.life <= 0) gameState.particles.splice(i, 1);
+    }
+
+    if (gameState.screenShake > 0) {
+        gameState.screenShake = Math.max(0, gameState.screenShake - dt * 30);
+    }
+
+    // Update top HUD bars smoothly
+    document.getElementById("energy-bar").style.width = `${Math.max(0, gameState.energy)}%`;
+    document.getElementById("energy-text").textContent = `${Math.ceil(Math.max(0, gameState.energy))}%`;
+
+    const maxCd = Math.max(0.8, 2.2 - (gameState.diveLevel - 1) * 0.35);
+    const divePct = p.diveCooldown <= 0 ? 100 : Math.max(0, (1 - p.diveCooldown / maxCd) * 100);
+    document.getElementById("dive-bar").style.width = `${divePct}%`;
+    document.getElementById("dive-status").textContent = p.diveCooldown <= 0 ? "READY" : `${p.diveCooldown.toFixed(1)}s`;
+}
+
+// ==========================================
+// 7. RENDERING PIPELINE (BRAIDED RIVER & BIRDS)
+// ==========================================
+function draw() {
+    ctx.clearRect(0, 0, width, height);
+
+    if (!gameState.player) return;
+
+    // Camera centered on player with world clamping
+    let camX = gameState.player.x - width * 0.5;
+    let camY = gameState.player.y - height * 0.5;
+    camX = Math.max(0, Math.min(WORLD.width - width, camX));
+    camY = Math.max(0, Math.min(WORLD.height - height, camY));
+
+    if (gameState.screenShake > 0) {
+        camX += (Math.random() - 0.5) * gameState.screenShake;
+        camY += (Math.random() - 0.5) * gameState.screenShake;
+    }
+
+    ctx.save();
+    ctx.translate(-camX, -camY);
+
+    // 1. Riverbed & Braided Water Background
+    const waterGrad = ctx.createLinearGradient(0, 0, WORLD.width, 0);
+    waterGrad.addColorStop(0, "#1e3a2f");     // Lush river bank left
+    waterGrad.addColorStop(0.08, "#0284c7");  // Braided blue channel
+    waterGrad.addColorStop(0.5, gameState.floodLevel > 0.3 ? "#0369a1" : "#0ea5e9");
+    waterGrad.addColorStop(0.92, "#0284c7");
+    waterGrad.addColorStop(1, "#1e3a2f");     // Lush river bank right
+    ctx.fillStyle = waterGrad;
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    // Animated flowing braided current ribbons
+    const time = performance.now() * 0.001;
+    ctx.strokeStyle = gameState.isRaining ? "rgba(186, 230, 253, 0.26)" : "rgba(224, 242, 254, 0.16)";
+    ctx.lineWidth = 18;
+    for (let b = 0; b < 6; b++) {
+        const bx = 320 + b * 340;
+        ctx.beginPath();
+        for (let y = 0; y <= WORLD.height; y += 80) {
+            const wave = Math.sin(y * 0.005 + time * 1.8 + b) * 65;
+            if (y === 0) ctx.moveTo(bx + wave, y);
+            else ctx.lineTo(bx + wave, y);
+        }
+        ctx.stroke();
+    }
+
+    // 2. Hidden Passage / Secret Spring Lagoon (Note 1)
+    const hp = gameState.hiddenPassage;
+    if (hp) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(hp.x, hp.y, hp.radius, 0, Math.PI * 2);
+        ctx.fillStyle = hp.discovered ? "rgba(20, 184, 166, 0.45)" : "rgba(15, 118, 110, 0.25)";
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 8]);
+        ctx.strokeStyle = hp.discovered ? "#5eead4" : "rgba(94, 234, 212, 0.3)";
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "#ccfbf1";
+        ctx.font = "bold 13px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText(hp.discovered ? "✨ SECRET SPRING LAGOON" : "🌿 ??? Hidden Channel", hp.x, hp.y - hp.radius + 22);
+        ctx.restore();
+    }
+
+    // 3. Shingle Gravel Islands (Submerge during Floods unless High Ridge!)
+    for (const isl of gameState.islands) {
+        const submerged = gameState.floodLevel > 0.65 && isl.elevation === "low";
+        ctx.save();
+        ctx.translate(isl.x, isl.y);
+        ctx.rotate(isl.rotation);
+
+        // Island outer cobble beach
+        ctx.beginPath();
+        ctx.ellipse(0, 0, isl.rx, isl.ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = submerged ? "rgba(148, 163, 184, 0.35)" : (isl.elevation === "high" ? "#d6d3d1" : "#a8a29e");
+        ctx.fill();
+
+        // High ridge inner crown
+        if (isl.elevation === "high") {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, isl.rx * 0.68, isl.ry * 0.68, 0, 0, Math.PI * 2);
+            ctx.fillStyle = "#f5f5f4";
+            ctx.fill();
+        }
+
+        // Subtle label
+        ctx.rotate(-isl.rotation);
+        ctx.fillStyle = submerged ? "#bae6fd" : "#44403c";
+        ctx.font = "600 11px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText(
+            submerged ? "🌊 Submerged" : (isl.elevation === "high" ? "⛰️ High Shingle Ridge" : "🪨 Low Gravel Bar"),
+            0,
+            4
+        );
+        ctx.restore();
+    }
+
+    // 4. Player's Nest, Eggs & Chicks (Notes 7 & 10)
+    if (gameState.nest) {
+        const n = gameState.nest;
+        ctx.save();
+        ctx.translate(n.x, n.y);
+        // Twig & pebble nest ring
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.fillStyle = "#78350f";
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#d97706";
+        ctx.stroke();
+
+        // Eggs
+        for (let e = 0; e < n.eggs; e++) {
+            ctx.beginPath();
+            ctx.ellipse(-6 + e * 12, -3, 4.5, 6, 0.2, 0, Math.PI * 2);
+            ctx.fillStyle = "#fef3c7";
+            ctx.fill();
+        }
+
+        // Chicks
+        for (let c = 0; c < n.chicks; c++) {
+            ctx.beginPath();
+            ctx.arc(-7 + c * 14, 5, 5.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#fde047";
+            ctx.fill();
+        }
+
+        ctx.fillStyle = "#fef08a";
+        ctx.font = "bold 11px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText("🪺 YOUR NEST [E]", 0, -28);
+        ctx.restore();
+    }
+
+    // 5. Fish & Mayflies (Note 8)
+    for (const f of gameState.foods) {
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        if (f.type === "fish") {
+            // Small native fish silhouette
+            ctx.fillStyle = "#bae6fd";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 10, 4.5, Math.PI * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(0, -9);
+            ctx.lineTo(-4, -15);
+            ctx.lineTo(4, -15);
+            ctx.closePath();
+            ctx.fill();
+        } else {
+            // Mayfly / Golden Mayfly
+            const isGold = f.type === "golden_mayfly";
+            ctx.fillStyle = isGold ? "#facc15" : "#a7f3d0";
+            ctx.beginPath();
+            ctx.arc(0, 0, isGold ? 6 : 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            // Fluttering wings
+            const wingW = 7 + Math.sin(f.phase * 3) * 3;
+            ctx.fillStyle = "rgba(255,255,255,0.75)";
+            ctx.ellipse(-5, 0, wingW, 2.5, -0.3, 0, Math.PI * 2);
+            ctx.ellipse(5, 0, wingW, 2.5, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    // 6. Dive Splash Ripples
+    for (const r of gameState.ripples) {
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(224, 242, 254, ${r.alpha})`;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+    }
+
+    // 7. Predators & Danger Radius (Note 5)
+    for (const pred of gameState.predators) {
+        ctx.save();
+        ctx.translate(pred.x, pred.y);
+
+        // Danger proximity ring
+        ctx.beginPath();
+        ctx.arc(0, 0, pred.radius, 0, Math.PI * 2);
+        ctx.fillStyle = pred.chasing ? "rgba(239, 68, 68, 0.16)" : "rgba(239, 68, 68, 0.06)";
+        ctx.fill();
+        ctx.strokeStyle = pred.chasing ? "rgba(248, 113, 113, 0.65)" : "rgba(248, 113, 113, 0.22)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Predator body
+        ctx.fillStyle = pred.stunTimer > 0 ? "#94a3b8" : pred.color;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 18, 11, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing eyes
+        ctx.fillStyle = "#fef08a";
+        ctx.beginPath();
+        ctx.arc(10, -4, 2.5, 0, Math.PI * 2);
+        ctx.arc(10, 4, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#fecaca";
+        ctx.font = "bold 11px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText(pred.stunTimer > 0 ? `💫 Stunned ${pred.name}` : `⚠️ ${pred.name}`, 0, -18);
+        ctx.restore();
+    }
+
+    // 8. Mate Bird
+    if (gameState.mate) {
+        drawBird(gameState.mate.x, gameState.mate.y, 0, gameState.mate.wingPhase, 0.85, {
+            bodyColor: "#f1f5f9",
+            wingColor: "#94a3b8",
+            headColor: "#334155",
+            beakColor: "#fb923c"
+        }, false);
+        if (!gameState.mate.following && !gameState.mate.atNest) {
+            ctx.fillStyle = "#fbcfe8";
+            ctx.font = "bold 11px Inter";
+            ctx.textAlign = "center";
+            ctx.fillText("💕 Potential Mate", gameState.mate.x, gameState.mate.y - 24);
+        }
+    }
+
+    // 9. Player Bird (Tarāpuka / Tarapirohe with active Skin)
+    const p = gameState.player;
+    const activeSkin = SKINS.find(s => s.id === gameState.currentSkin) || SKINS[0];
+    const diveScale = p.diving ? 0.68 : 1.05;
+    if (!(p.invulnTimer > 0 && Math.floor(p.invulnTimer * 12) % 2 === 0)) {
+        drawBird(p.x, p.y, p.angle, p.wingPhase, diveScale, activeSkin, p.diving);
+    }
+
+    // 10. Particles
+    for (const pt of gameState.particles) {
+        ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+        ctx.fillStyle = pt.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+
+    // 11. Screen-space Rain Overlay (Note 2)
+    if (gameState.isRaining) {
+        ctx.strokeStyle = "rgba(186, 230, 253, 0.45)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (const drop of gameState.rainDrops) {
+            drop.y += drop.speed * 0.016;
+            drop.x -= 60 * 0.016;
+            if (drop.y > height) {
+                drop.y = -20;
+                drop.x = Math.random() * width;
+            }
+            ctx.moveTo(drop.x, drop.y);
+            ctx.lineTo(drop.x - 3, drop.y + drop.len);
+        }
+        ctx.stroke();
+    }
+
+    // 12. Offscreen Pointer Arrow to Hidden Passage or Nest
+    drawEdgeIndicator(camX, camY);
+}
+
+function drawBird(x, y, angle, wingPhase, scale, skin, isDiving) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.scale(scale, scale);
+
+    // Shadow on river below
+    if (!isDiving) {
+        ctx.fillStyle = "rgba(15, 23, 42, 0.22)";
+        ctx.beginPath();
+        ctx.ellipse(-6, 18, 16, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Swept gull/tern wings
+    const flap = Math.sin(wingPhase) * 14;
+    ctx.fillStyle = skin.wingColor;
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.quadraticCurveTo(-6, -26 + flap, -18, -32 + flap);
+    ctx.lineTo(-10, 0);
+    ctx.quadraticCurveTo(-6, 26 - flap, -18, 32 - flap);
+    ctx.closePath();
+    ctx.fill();
+
+    // Streamlined body
+    ctx.fillStyle = skin.bodyColor;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head
+    ctx.fillStyle = skin.headColor;
+    ctx.beginPath();
+    ctx.arc(14, 0, 6.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sharp Beak
+    ctx.fillStyle = skin.beakColor;
+    ctx.beginPath();
+    ctx.moveTo(19, -2.5);
+    ctx.lineTo(29, 0);
+    ctx.lineTo(19, 2.5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawEdgeIndicator(camX, camY) {
+    // Point toward Mate if not yet found, or Hidden Passage if Mission 2
+    let target = null;
+    let label = "";
+    let color = "#38bdf8";
+
+    if (gameState.missionIdx === 1 && !gameState.hiddenPassage.discovered) {
+        target = gameState.hiddenPassage;
+        label = "🌿 Hidden Lagoon";
+        color = "#2dd4bf";
+    } else if (gameState.mate && !gameState.mate.following && !gameState.mate.atNest) {
+        target = gameState.mate;
+        label = "💕 Mate";
+        color = "#f472b6";
+    }
+
+    if (!target) return;
+    const sx = target.x - camX;
+    const sy = target.y - camY;
+    if (sx >= 40 && sx <= width - 40 && sy >= 40 && sy <= height - 40) return;
+
+    const cx = width * 0.5;
+    const cy = height * 0.5;
+    const ang = Math.atan2(sy - cy, sx - cx);
+    const ix = Math.max(55, Math.min(width - 55, cx + Math.cos(ang) * (width * 0.42)));
+    const iy = Math.max(85, Math.min(height - 85, cy + Math.sin(ang) * (height * 0.42)));
+
+    ctx.save();
+    ctx.translate(ix, iy);
+    ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-48, -14, 96, 28, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = color;
+    ctx.font = "bold 11px Inter";
+    ctx.textAlign = "center";
+    ctx.fillText(label, 0, 4);
+    ctx.restore();
+}
+
+function triggerGameOver(title, desc) {
+    gameState.running = false;
+    document.getElementById("gameover-title").textContent = title;
+    document.getElementById("gameover-desc").textContent = desc;
+    document.getElementById("stat-caught").textContent = gameState.totalCaught;
+    document.getElementById("stat-missions").textContent = gameState.missionsCompleted;
+    document.getElementById("stat-chicks").textContent = gameState.chicksRaised;
+    document.getElementById("modal-gameover").classList.remove("hidden");
+}
+
+// ==========================================
+// 8. HUD & MODAL UI CONTROLLERS
+// ==========================================
+function updateHUD() {
+    document.getElementById("food-count").textContent = gameState.food;
+    document.getElementById("modal-food-count").textContent = gameState.food;
+    document.getElementById("dive-lvl-hud").textContent = gameState.diveLevel;
+
+    // Weather pill
+    const wIcon = document.getElementById("weather-icon");
+    const wLabel = document.getElementById("weather-label");
+    if (gameState.isFlooding) {
+        wIcon.textContent = "🌊";
+        wLabel.textContent = "FLOOD SURGE!";
+        wLabel.className = "text-rose-300";
+    } else if (gameState.isRaining) {
+        wIcon.textContent = "🌧️";
+        wLabel.textContent = "RAIN (FAST FLOW)";
+        wLabel.className = "text-amber-300";
+    } else {
+        wIcon.textContent = "☀️";
+        wLabel.textContent = "CLEAR FLOW";
+        wLabel.className = "text-sky-200";
+    }
+
+    // Mission Pill
+    if (gameState.missionIdx < MISSIONS.length) {
+        const m = MISSIONS[gameState.missionIdx];
+        const txt = `${m.text} (${gameState.missionProgress}/${m.target})`;
+        document.getElementById("mission-badge").textContent = `MISSION ${m.id}`;
+        document.getElementById("mission-text").textContent = txt;
+        document.getElementById("mission-badge-m").textContent = `M${m.id}`;
+        document.getElementById("mission-text-m").textContent = txt;
+    } else {
+        document.getElementById("mission-badge").textContent = "MASTERED";
+        document.getElementById("mission-text").textContent = "All ecology missions passed! Raise more chicks!";
+    }
+
+    renderUpgradesModal();
+    renderFieldGuideModal();
+}
+
+function renderUpgradesModal() {
+    document.getElementById("up-dive-lvl").textContent = gameState.diveLevel;
+    document.getElementById("up-speed-lvl").textContent = gameState.speedLevel;
+
+    const diveCost = gameState.diveLevel * 5;
+    const btnDive = document.getElementById("buy-dive");
+    if (gameState.diveLevel >= 4) {
+        btnDive.textContent = "MAXED";
+        btnDive.disabled = true;
+    } else {
+        btnDive.textContent = `Upgrade (${diveCost} 🦟)`;
+        btnDive.disabled = gameState.food < diveCost;
+    }
+
+    const speedCost = gameState.speedLevel * 5;
+    const btnSpeed = document.getElementById("buy-speed");
+    if (gameState.speedLevel >= 4) {
+        btnSpeed.textContent = "MAXED";
+        btnSpeed.disabled = true;
+    } else {
+        btnSpeed.textContent = `Upgrade (${speedCost} 🦟)`;
+        btnSpeed.disabled = gameState.food < speedCost;
+    }
+
+    const grid = document.getElementById("skins-grid");
+    grid.innerHTML = "";
+    SKINS.forEach(skin => {
+        const isSelected = gameState.currentSkin === skin.id;
+        const card = document.createElement("button");
+        card.className = `p-2.5 rounded-2xl border text-left transition ${
+            isSelected
+                ? "bg-amber-500/20 border-amber-400 ring-2 ring-amber-400/50"
+                : "bg-slate-800 border-slate-700 hover:bg-slate-750"
+        }`;
+        card.innerHTML = `
+            <div class="font-bold text-xs text-white mb-0.5">${skin.name}</div>
+            <div class="text-[10px] text-slate-300 mb-1.5">${skin.perk}</div>
+            <div class="text-[11px] font-bold ${skin.unlocked ? "text-emerald-400" : "text-amber-300"}">
+                ${isSelected ? "✓ Equipped" : (skin.unlocked ? "Equip" : `Unlock (${skin.cost} 🦟)`)}
+            </div>
+        `;
+        card.onclick = () => {
+            if (skin.unlocked) {
+                gameState.currentSkin = skin.id;
+                sfx.playCatch(false);
+                updateHUD();
+            } else if (gameState.food >= skin.cost) {
+                gameState.food -= skin.cost;
+                skin.unlocked = true;
+                gameState.currentSkin = skin.id;
+                sfx.playMissionComplete();
+                showToast(`✨ Unlocked ${skin.name} plumage!`, "🦅");
+                updateHUD();
+            } else {
+                showToast(`Need ${skin.cost} fish/mayflies to unlock!`, "🦟");
+            }
+        };
+        grid.appendChild(card);
+    });
+}
+
+function renderFieldGuideModal() {
+    const list = document.getElementById("guide-list");
+    list.innerHTML = "";
+    FIELD_GUIDE_ENTRIES.forEach(entry => {
+        const div = document.createElement("div");
+        div.className = `p-3.5 rounded-2xl border ${
+            entry.unlocked
+                ? "bg-slate-800/90 border-indigo-400/40"
+                : "bg-slate-900/60 border-slate-800 opacity-65"
+        }`;
+        div.innerHTML = `
+            <div class="flex items-center gap-2.5 mb-1">
+                <span class="text-2xl">${entry.unlocked ? entry.icon : "🔒"}</span>
+                <div>
+                    <div class="font-bold text-sm ${entry.unlocked ? "text-indigo-200" : "text-slate-400"}">
+                        ${entry.unlocked ? entry.title : "Locked Discovery"}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${entry.subtitle}</div>
+                </div>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+                ${entry.unlocked ? entry.desc : "Pass missions and explore the braided river to unlock this ecology card!"}
+            </p>
+        `;
+        list.appendChild(div);
+    });
+}
+
+function renderVisitorModal() {
+    const spec = VISITOR_SPECIMENS[gameState.currentSpecimenIdx];
+    document.getElementById("visitor-specimen-icon").textContent = spec.icon;
+    document.getElementById("visitor-specimen-name").textContent = spec.name;
+    document.getElementById("visitor-fact").textContent = spec.fact;
+    document.getElementById("visitor-growth-bar").style.width = `${spec.stage}%`;
+    document.getElementById("visitor-released").textContent = gameState.visitorReleased;
+
+    const stageIndex = Math.min(3, Math.floor(spec.stage / 33));
+    document.getElementById("visitor-specimen-stage").textContent = `Growth Stage: ${spec.stagesText[stageIndex]} (${spec.stage}%)`;
+}
+
+function growVisitorSpecimen(amount) {
+    const spec = VISITOR_SPECIMENS[gameState.currentSpecimenIdx];
+    spec.stage = Math.min(100, spec.stage + amount);
+    sfx.playCatch(false);
+
+    if (spec.stage >= 100) {
+        gameState.visitorReleased += 1;
+        gameState.food += 3;
+        sfx.playMissionComplete();
+        showToast(`🎉 ${spec.name} became fully grown & released! (+3 🦟)`, "🔬");
+        spec.stage = 25; // Reset for next specimen study
+        updateHUD();
+    }
+    renderVisitorModal();
+}
+
+// ==========================================
+// 9. EVENT LISTENERS & MAIN LOOP BOOTSTRAP
+// ==========================================
+document.querySelectorAll(".map-select-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.querySelectorAll(".map-select-btn").forEach(b => b.classList.remove("active", "ring-2", "ring-sky-400"));
+        btn.classList.add("active", "ring-2", "ring-sky-400");
+        gameState.mapType = btn.dataset.map;
+    });
+});
+
+document.getElementById("btn-start-game").addEventListener("click", async () => {
+    await sfx.init();
+    document.getElementById("start-screen").classList.add("hidden");
+    document.getElementById("top-hud").classList.remove("hidden");
+    document.getElementById("mobile-mission").classList.remove("hidden");
+    document.getElementById("bottom-controls").classList.remove("hidden");
+    gameState.running = true;
+    gameState.paused = false;
+    initRun();
+});
+
+document.getElementById("btn-restart").addEventListener("click", () => {
+    document.getElementById("modal-gameover").classList.add("hidden");
+    gameState.running = true;
+    gameState.paused = false;
+    initRun();
+});
+
+document.getElementById("btn-dive").addEventListener("click", () => {
+    if (gameState.running && !gameState.paused) triggerDiveBomb();
+});
+
+document.getElementById("btn-nest").addEventListener("click", () => {
+    if (gameState.running && !gameState.paused) tryBuildOrInteractNest();
+});
+
+document.getElementById("btn-upgrades").addEventListener("click", () => {
+    gameState.paused = true;
+    renderUpgradesModal();
+    document.getElementById("modal-upgrades").classList.remove("hidden");
+});
+
+document.getElementById("btn-fieldguide").addEventListener("click", () => {
+    gameState.paused = true;
+    renderFieldGuideModal();
+    document.getElementById("modal-guide").classList.remove("hidden");
+});
+
+document.getElementById("btn-visitor").addEventListener("click", () => {
+    gameState.paused = true;
+    renderVisitorModal();
+    document.getElementById("modal-visitor").classList.remove("hidden");
+});
+
+document.querySelectorAll(".close-modal").forEach(btn => {
+    btn.addEventListener("click", () => {
+        document.getElementById("modal-upgrades").classList.add("hidden");
+        document.getElementById("modal-guide").classList.add("hidden");
+        document.getElementById("modal-visitor").classList.add("hidden");
+        gameState.paused = false;
+    });
+});
+
+document.getElementById("buy-dive").addEventListener("click", () => {
+    const cost = gameState.diveLevel * 5;
+    if (gameState.food >= cost && gameState.diveLevel < 4) {
+        gameState.food -= cost;
+        gameState.diveLevel += 1;
+        sfx.playMissionComplete();
+        showToast(`🦅 Tarāpuka Dive Bomb upgraded to Lv.${gameState.diveLevel}!`, "⚡");
+        updateHUD();
+    }
+});
+
+document.getElementById("buy-speed").addEventListener("click", () => {
+    const cost = gameState.speedLevel * 5;
+    if (gameState.food >= cost && gameState.speedLevel < 4) {
+        gameState.food -= cost;
+        gameState.speedLevel += 1;
+        sfx.playMissionComplete();
+        showToast(`💨 Gale Wing Swiftness upgraded to Lv.${gameState.speedLevel}!`, "⚡");
+        updateHUD();
+    }
+});
+
+document.getElementById("btn-switch-specimen").addEventListener("click", () => {
+    gameState.currentSpecimenIdx = (gameState.currentSpecimenIdx + 1) % VISITOR_SPECIMENS.length;
+    renderVisitorModal();
+});
+document.getElementById("btn-feed-algae").addEventListener("click", () => growVisitorSpecimen(35));
+document.getElementById("btn-cool-water").addEventListener("click", () => growVisitorSpecimen(35));
+
+document.getElementById("btn-mute").addEventListener("click", (e) => {
+    const isMuted = sfx.toggleMute();
+    e.target.textContent = isMuted ? "🔇" : "🔊";
+});
+
+// Animation Loop
+let lastTime = performance.now();
+function gameLoop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+window.onload = () => {
+    requestAnimationFrame(gameLoop);
+};
+</script>
+</body>
+</html>
